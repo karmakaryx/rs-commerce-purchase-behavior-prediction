@@ -226,9 +226,11 @@ $RECYCLE.BIN/
 
 # Custom
 data/
-wandb/
+output/
+checkpoints/
+logs/
+log_tensorboard/
 *.tar*
 *.pkl
 *.h5
 *.pt
-baseline.ipynb
