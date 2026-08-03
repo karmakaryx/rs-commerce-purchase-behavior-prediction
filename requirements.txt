@@ -1,4 +1,4 @@
-catboost==1.2.8
+catboost==1.2.10
 fastparquet==2026.3.0
 implicit==0.7.2
 kmeans_pytorch==0.3
