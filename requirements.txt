@@ -1,3 +1,4 @@
+catboost==1.2.8
 fastparquet==2026.3.0
 implicit==0.7.2
 kmeans_pytorch==0.3
@@ -8,3 +9,4 @@ pyarrow==24.0.0
 ray==2.6.3
 recbole==1.2.1
 tqdm==4.66.1
+xgboost==3.2.0
