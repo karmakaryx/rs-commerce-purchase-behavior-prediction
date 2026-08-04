@@ -1,6 +1,5 @@
 import argparse
 import os
-
 import numpy as np
 import pandas as pd
 from implicit.als import AlternatingLeastSquares
@@ -22,7 +21,7 @@ def main():
 
     train_df = pd.read_parquet(os.path.join(args.data_dir, args.train_dataset))
 
-    # sorted() 적용 → recbole_dataset.py 와 동일하게 재현성 보장
+    # sorted() 적용: recbole_dataset.py 와 동일하게 재현성 보장
     user2idx = {u: i for i, u in enumerate(sorted(train_df["user_id"].unique()))}
     idx2user = {i: u for u, i in user2idx.items()}
     item2idx = {it: i for i, it in enumerate(sorted(train_df["item_id"].unique()))}
