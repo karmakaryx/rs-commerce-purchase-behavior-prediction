@@ -15,7 +15,7 @@ def main():
     train = pd.read_parquet(os.path.join(args.data_dir, args.train_dataset))
 
     train["event_time"] = pd.to_datetime(train["event_time"], utc=True, errors="coerce")
-    train = train.sort_values(by=["user_session", "event_time"])
+    train = train.sort_values(by=["user_id", "event_time"])
 
     train_df = train[["user_id", "item_id", "user_session", "event_time"]].copy()
 

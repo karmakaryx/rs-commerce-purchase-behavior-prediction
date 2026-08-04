@@ -128,7 +128,12 @@ def main():
             topk_score, topk_iid_list = full_sort_topk([recbole_id], model, test_data, k=10, device=config["device"])
             topk_scores = topk_score.squeeze(0).detach().cpu().numpy().tolist()
             token_matrix = dataset.id2token(dataset.iid_field, topk_iid_list.cpu())
-            predicted_item_list = list(map(int, token_matrix[-1]))
+            if token_matrix.size == 0:
+                predicted_item_list = list(popular_idx_sequence)
+            else:
+                token_flat = token_matrix[-1] if token_matrix.ndim > 1 else token_matrix
+                predicted_item_list = list(map(int, token_flat))
+
             if 0.0 < POPULARITY_BLEND < 1.0:
                 blended = []
                 for iid, score in zip(predicted_item_list, topk_scores):

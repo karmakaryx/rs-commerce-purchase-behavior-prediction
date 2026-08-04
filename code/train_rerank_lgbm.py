@@ -6,7 +6,15 @@ import pandas as pd
 from lightgbm import LGBMRanker, early_stopping, log_evaluation
 from sklearn.model_selection import train_test_split
 
-def log(msg: str, t0: float = None):
+FEATURES = [
+    "sasrec_score", "sasrec_rank",
+    "item_cnt", "item_cart_cnt",
+    "ui_cnt", "ui_cart_cnt", "ui_view_cnt",
+    "item_price", "user_avg_price", "price_ratio",
+    "gap_hours",
+]
+
+def log(msg: str, t0: float=None):
     elapsed = f"  (+{time.time() - t0:.1f}s)" if t0 else ""
     print(f"[{time.strftime('%H:%M:%S')}]{elapsed} {msg}", flush=True)
 
@@ -37,7 +45,6 @@ def main():
     t0 = time.time()
     data_dir = Path(args.data_dir)
 
-    # 1. 데이터 로드
     log("▶ 데이터 로딩 중...", t0)
     train = pd.read_parquet(data_dir / args.train_dataset)
     train["event_time"] = pd.to_datetime(train["event_time"], utc=True, errors="coerce")
@@ -47,7 +54,7 @@ def main():
     if "event_type" in train.columns:
         log(f"  event_type 분포:\n{train['event_type'].value_counts().to_string()}", t0)
 
-    # 2. 누수 방지: train을 hist(과거) / last(마지막 1개)로 분리
+    # 누수 방지: train을 hist(과거) / last(마지막 1개)로 분리
     log("▶ train/hist 분리 중...", t0)
     train_sorted = train.sort_values(["user_id", "event_time"])
     last_idx = train_sorted.groupby("user_id").tail(1).index
@@ -64,9 +71,8 @@ def main():
 
     df = cand.merge(pos, on=["user_id", "item_id"], how="left")
     df["label"] = df["label"].fillna(0).astype(int)
-    log(f"  positive 샘플: {df['label'].sum():,} / 전체: {len(df):,}", t0)
+    log(f"  positive: {df['label'].sum():,} / 전체: {len(df):,}", t0)
 
-    # 3. feature 생성 (모두 train_hist 기준)
     log("▶ feature 생성 중...", t0)
 
     # --- 아이템 인기도 (전체 interaction 수) ---
@@ -131,13 +137,8 @@ def main():
         (df["user_last"] - df["item_last"]).dt.total_seconds() / 3600.0
     ).fillna(9999).clip(-9999, 9999)
 
-    features = [
-        "sasrec_score", "sasrec_rank",
-        "item_cnt", "item_cart_cnt",
-        "ui_cnt", "ui_cart_cnt", "ui_view_cnt",
-        "item_price", "user_avg_price", "price_ratio",
-        "gap_hours",
-    ]
+    features = FEATURES
+
     for c in features:
         if c not in df.columns:
             df[c] = 0
@@ -145,7 +146,7 @@ def main():
     log(f"  feature 목록: {features}", t0)
     log(f"  label=1 비율: {df['label'].mean():.6f}", t0)
 
-    # 4. Train / Validation split (유저 기준)
+    # Train / Validation split (유저 기준)
     users = df["user_id"].drop_duplicates().values
     tr_users, va_users = train_test_split(users, test_size=0.2, random_state=42)
 
@@ -161,7 +162,6 @@ def main():
 
     log(f"  train users: {len(tr_users):,} / valid users: {len(va_users):,}", t0)
 
-    # 5. LGBMRanker 학습
     model = LGBMRanker(
         objective="lambdarank",
         metric="ndcg",
@@ -187,21 +187,18 @@ def main():
     )
     log(f"  best iteration: {model.best_iteration_}", t0)
 
-    # 6. 평가
     log("▶ 평가 중...", t0)
     va = va.copy()
     va["pred"] = model.predict(X_va)
     score, n_pos = ndcg_at_k(va[["user_id", "label", "pred"]], k=10)
-    log(f"  valid ndcg@10: {score:.6f}  (positive 있는 유저: {n_pos:,}명 기준)", t0)
+    log(f"  valid ndcg@10: {score:.6f}  (positive 유저: {n_pos:,}명)", t0)
 
-    # feature 중요도 출력
     importance = pd.Series(model.feature_importances_, index=features).sort_values(ascending=False)
     log(f"  feature 중요도:\n{importance.to_string()}", t0)
 
-    # 7. 저장
     Path(args.model_out).parent.mkdir(parents=True, exist_ok=True)
     model.booster_.save_model(args.model_out)
-    log(f"▶ 완료! saved: {args.model_out}  총 소요: {time.time()-t0:.1f}s", t0)
+    log(f"▶ 완료! saved: {args.model_out} (총 소요: {time.time()-t0:.1f}s)", t0)
 
 if __name__ == "__main__":
     main()

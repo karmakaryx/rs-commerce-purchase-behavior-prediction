@@ -1,197 +1,121 @@
 import argparse
+import gc
 import time
-from collections import defaultdict
 from pathlib import Path
 import lightgbm as lgb
-import numpy as np
 import pandas as pd
+import xgboost as xgb
+from catboost import CatBoost
+from train_rerank_catboost import FEATURES as CB_FEATURES
+from train_rerank_xgb import build_features as xgb_build_features, FEATURES as XGB_FEATURES
+from train_rerank_lgbm import FEATURES as LGBM_FEATURES
+from inference_ensemble_lgbm import build_features as lgbm_build_features
 
-def log(msg: str, t0: float = None):
+def log(msg, t0=None):
     elapsed = f"  (+{time.time() - t0:.1f}s)" if t0 else ""
     print(f"[{time.strftime('%H:%M:%S')}]{elapsed} {msg}", flush=True)
 
-def build_features(df: pd.DataFrame, train_hist: pd.DataFrame) -> pd.DataFrame:
-    # --- 아이템 인기도 ---
-    item_cnt = train_hist.groupby("item_id").size().rename("item_cnt").reset_index()
-    df = df.merge(item_cnt, on="item_id", how="left")
-    df["item_cnt"] = df["item_cnt"].fillna(0)
-
-    # --- 유저-아이템 전체 interaction 수 ---
-    ui_cnt = (train_hist.groupby(["user_id", "item_id"]).size().rename("ui_cnt").reset_index())
-    df = df.merge(ui_cnt, on=["user_id", "item_id"], how="left")
-    df["ui_cnt"] = df["ui_cnt"].fillna(0)
-
-    # --- event_type 기반 feature ---
-    if "event_type" in train_hist.columns:
-        cart_hist = train_hist[train_hist["event_type"] == "cart"]
-        view_hist = train_hist[train_hist["event_type"] == "view"]
-
-        ui_cart = (cart_hist.groupby(["user_id", "item_id"]).size().rename("ui_cart_cnt").reset_index())
-        df = df.merge(ui_cart, on=["user_id", "item_id"], how="left")
-        df["ui_cart_cnt"] = df["ui_cart_cnt"].fillna(0)
-
-        ui_view = (view_hist.groupby(["user_id", "item_id"]).size().rename("ui_view_cnt").reset_index())
-        df = df.merge(ui_view, on=["user_id", "item_id"], how="left")
-        df["ui_view_cnt"] = df["ui_view_cnt"].fillna(0)
-
-        item_cart_cnt = (cart_hist.groupby("item_id").size().rename("item_cart_cnt").reset_index())
-        df = df.merge(item_cart_cnt, on="item_id", how="left")
-        df["item_cart_cnt"] = df["item_cart_cnt"].fillna(0)
-    else:
-        df["ui_cart_cnt"] = 0
-        df["ui_view_cnt"] = 0
-        df["item_cart_cnt"] = 0
-
-    # --- 가격 기반 feature ---
-    if "price" in train_hist.columns:
-        item_price = (train_hist.groupby("item_id")["price"].mean().rename("item_price").reset_index())
-        df = df.merge(item_price, on="item_id", how="left")
-
-        if "event_type" in train_hist.columns:
-            purchase_hist = train_hist[train_hist["event_type"] == "purchase"]
-        else:
-            purchase_hist = train_hist
-        user_avg_price = (purchase_hist.groupby("user_id")["price"].mean().rename("user_avg_price").reset_index())
-        df = df.merge(user_avg_price, on="user_id", how="left")
-
-        df["price_ratio"] = (
-            df["item_price"] / df["user_avg_price"].replace(0, np.nan)
-        ).fillna(1.0).clip(0, 10)
-        df["item_price"] = df["item_price"].fillna(0)
-        df["user_avg_price"] = df["user_avg_price"].fillna(0)
-    else:
-        df["item_price"] = 0
-        df["user_avg_price"] = 0
-        df["price_ratio"] = 1.0
-
-    # --- gap_hours: 유저 마지막 활동 vs 아이템 마지막 등장 시간 차 ---
-    user_last = (train_hist.groupby("user_id")["event_time"].max().rename("user_last").reset_index())
-    item_last = (train_hist.groupby("item_id")["event_time"].max().rename("item_last").reset_index())
-    df = df.merge(user_last, on="user_id", how="left").merge(item_last, on="item_id", how="left")
-    df["gap_hours"] = (
-        (df["user_last"] - df["item_last"]).dt.total_seconds() / 3600.0
-    ).fillna(9999).clip(-9999, 9999)
-
-    return df
-
-# train_rerank_lgbm.py와 반드시 동일하게 유지
-FEATURES = [
-    "sasrec_score", "sasrec_rank",
-    "item_cnt", "item_cart_cnt",
-    "ui_cnt", "ui_cart_cnt", "ui_view_cnt",
-    "item_price", "user_avg_price", "price_ratio",
-    "gap_hours",
-]
-
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--candidates", type=str, default="../output/candidates.parquet")
+    parser.add_argument("--candidates", type=str, default="../output/candidates_xgb.parquet")
+    parser.add_argument("--xgb_model", type=str, default="../output/rerank_xgb.json")
     parser.add_argument("--lgbm_model", type=str, default="../output/rerank_lgbm.txt")
+    parser.add_argument("--catboost_model", type=str, default="../output/catboost_rerank.cbm")
     parser.add_argument("--data_dir", type=str, default="../data")
     parser.add_argument("--train_dataset", type=str, default="train.parquet")
     parser.add_argument("--submission_template", type=str, default="../data/sample_submission.csv")
-    parser.add_argument("--out", type=str, default="../output/submission_ensemble.csv")
-    parser.add_argument("--w_lgbm", type=float, default=0.7)
-    parser.add_argument("--w_sasrec", type=float, default=0.3)
+    parser.add_argument("--out", type=str, default="../output/submission_final.csv")
+    parser.add_argument("--w_xgb", type=float, default=0.3)
+    parser.add_argument("--w_lgbm", type=float, default=0.35)
+    parser.add_argument("--w_catboost", type=float, default=0.35)
+    parser.add_argument("--w_sasrec", type=float, default=0.0)
     args = parser.parse_args()
 
     t0 = time.time()
 
-    # 1. candidates 로드
-    log("▶ candidates.parquet 로딩 중...", t0)
-    df = pd.read_parquet(args.candidates).copy()
-    log(f"  candidates shape: {df.shape}  "
-        f"(users: {df['user_id'].nunique():,}, "
-        f"items/user: ~{len(df) // max(df['user_id'].nunique(), 1)})", t0)
+    log("▶ 모델 로딩...", t0)
+    xgb_booster = xgb.Booster()
+    xgb_booster.load_model(args.xgb_model)
+    lgbm_booster = lgb.Booster(model_file=args.lgbm_model)
+    cb_model = CatBoost()
+    cb_model.load_model(args.catboost_model)
 
-    # 2. feature 재계산
-    log("▶ train 데이터 로딩 & feature 생성 중...", t0)
-    data_dir = Path(args.data_dir)
-    train = pd.read_parquet(data_dir / args.train_dataset)
+    log("▶ 데이터 로딩...", t0)
+    df = pd.read_parquet(args.candidates)
+
+    # 필수 소스 컬럼 누락 방지 및 기본값 채우기
+    src_cols = ["src_cart", "src_repeat", "src_recent", "src_sasrec", "src_popular"]
+    for col in src_cols:
+        if col not in df.columns:
+            df[col] = 0
+
+    train = pd.read_parquet(Path(args.data_dir) / args.train_dataset)
     train["event_time"] = pd.to_datetime(train["event_time"], utc=True, errors="coerce")
-    log(f"  train: {len(train):,}행", t0)
 
-    df = build_features(df, train_hist=train)
+    # feature 생성 시 필요한 최소 컬럼 셋 정의
+    base_cols = ["user_id", "item_id", "sasrec_score", "sasrec_rank"] + src_cols
 
-    # 누락된 feature 있으면 0으로 보완 (안전장치)
-    for c in FEATURES:
-        if c not in df.columns:
-            log(f"  WARNING: feature '{c}' not found in candidates, filling with 0", t0)
-            df[c] = 0
+    log("▶ XGBoost 추론...", t0)
+    X_xgb = xgb_build_features(df[base_cols].copy(), train_hist=train)
+    for c in XGB_FEATURES:
+        if c not in X_xgb.columns: X_xgb[c] = 0
 
-    log(f"  feature 생성 완료: {FEATURES}", t0)
+    dtest = xgb.DMatrix(X_xgb[XGB_FEATURES].fillna(0).values, feature_names=XGB_FEATURES)
+    df["xgb_score"] = xgb_booster.predict(dtest).astype("float32")
+    del X_xgb, dtest; gc.collect()
 
-    # 3. LightGBM 모델 로드 & 추론
-    log("▶ LightGBM 모델 로딩 중...", t0)
-    booster = lgb.Booster(model_file=args.lgbm_model)
+    log("▶ LGBM & CatBoost feature 생성...", t0)
+    X_shared = lgbm_build_features(df[base_cols].copy(), train_hist=train)
+    for c in list(set(LGBM_FEATURES + CB_FEATURES)):
+        if c not in X_shared.columns: X_shared[c] = 0
 
-    log("▶ LightGBM 점수 예측 중...", t0)
-    df["lgbm_score"] = booster.predict(df[FEATURES].fillna(0))
-    log(f"  lgbm_score range: [{df['lgbm_score'].min():.4f}, {df['lgbm_score'].max():.4f}]", t0)
+    log("▶ LGBM 추론...", t0)
+    df["lgbm_score"] = lgbm_booster.predict(X_shared[LGBM_FEATURES].fillna(0)).astype("float32")
 
-    # 4. SASRec rank 정규화 (유저별 0~1 스케일)
-    log("▶ SASRec rank 정규화 중...", t0)
-    df["sasrec_rank_norm"] = df.groupby("user_id")["sasrec_rank"].rank(
-        method="first", ascending=True
+    log("▶ CatBoost 추론...", t0)
+    df["catboost_score"] = cb_model.predict(X_shared[CB_FEATURES].fillna(0)).astype("float32")
+
+    del X_shared; gc.collect()
+
+    log("▶ 점수 정규화 및 앙상블...", t0)
+    for col in ["xgb_score", "lgbm_score", "catboost_score"]:
+        mn, mx = df[col].min(), df[col].max()
+        df[col] = (df[col] - mn) / (mx - mn + 1e-8)
+
+    df["final_score"] = (
+        args.w_xgb * df["xgb_score"] +
+        args.w_lgbm * df["lgbm_score"] +
+        args.w_catboost * df["catboost_score"]
     )
-    maxr = df.groupby("user_id")["sasrec_rank_norm"].transform("max").replace(0, 1)
-    df["sasrec_rank_score"] = 1.0 - (df["sasrec_rank_norm"] - 1) / maxr
 
-    # 5. 앙상블 점수 계산
-    log(f"▶ 앙상블 점수 계산 중... (w_lgbm={args.w_lgbm}, w_sasrec={args.w_sasrec})", t0)
-    df["final_score"] = args.w_lgbm * df["lgbm_score"] + args.w_sasrec * df["sasrec_rank_score"]
-
-    # 6. 유저별 top-10 추출
-    log("▶ 유저별 top-10 추출 중...", t0)
+    log("▶ top-10 추출...", t0)
     top10 = (
         df.sort_values(["user_id", "final_score"], ascending=[True, False])
           .groupby("user_id")
           .head(10)[["user_id", "item_id"]]
     )
-    log(f"  top10 shape: {top10.shape}", t0)
+    del df; gc.collect()
 
-    # 7. fallback용 인기 아이템 (후보에 없는 유저 대비)
-    popular_items = (
-        df.groupby("item_id")["sasrec_score"]
-          .mean()
-          .sort_values(ascending=False)
-          .head(10)
-          .index.tolist()
-    )
-    log(f"  fallback popular items: {popular_items[:5]} ...", t0)
-
-    # 8. submission 파일 채우기
-    log("▶ submission 파일 생성 중...", t0)
-    user_items: dict = defaultdict(list)
-    for u, i in top10[["user_id", "item_id"]].itertuples(index=False):
-        user_items[u].append(i)
+    log("▶ submission 생성...", t0)
+    user_items = top10.groupby("user_id")["item_id"].apply(list).to_dict()
+    popular_items = train["item_id"].value_counts().head(10).index.tolist()
 
     sub = pd.read_csv(args.submission_template)
-    log(f"  submission template shape: {sub.shape}", t0)
-
-    used = defaultdict(int)
     out_items = []
-    fallback_count = 0
+    current_user = None
+    item_idx = 0
 
     for u in sub["user_id"].values:
-        arr = user_items.get(u, None)
-        if not arr:
-            arr = popular_items
-            fallback_count += 1
-        idx = used[u] % len(arr)
-        out_items.append(arr[idx])
-        used[u] += 1
-
-    if fallback_count > 0:
-        log(f"  WARNING: fallback 적용된 row 수: {fallback_count:,} (popular items로 대체)", t0)
+        items = user_items.get(u, popular_items)
+        if u != current_user:
+            current_user = u
+            item_idx = 0
+        out_items.append(items[item_idx] if item_idx < len(items) else popular_items[item_idx % 10])
+        item_idx += 1
 
     sub["item_id"] = out_items
-
-    # 9. 저장
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     sub.to_csv(args.out, index=False)
-    log(f"▶ 완료! saved: {args.out}", t0)
-    log(f"  총 소요시간: {time.time() - t0:.1f}s", t0)
+    log(f"▶ 완료: {args.out} ({time.time()-t0:.1f}s)", t0)
 
 if __name__ == "__main__":
     main()
