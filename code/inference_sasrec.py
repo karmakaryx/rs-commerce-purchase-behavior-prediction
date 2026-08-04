@@ -2,8 +2,8 @@ import argparse
 import json
 import os
 import re
-from pathlib import Path
 from collections import defaultdict
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from recbole.quick_start.quick_start import load_data_and_model
