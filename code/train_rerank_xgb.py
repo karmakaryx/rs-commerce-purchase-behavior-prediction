@@ -113,7 +113,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", type=str, default="../data")
     parser.add_argument("--train_dataset", type=str, default="train.parquet")
-    parser.add_argument("--candidates", type=str, default="../output/candidates.parquet")
+    parser.add_argument("--candidates", type=str, default="../output/candidates_xgb.parquet")
     parser.add_argument("--model_out", type=str, default="../output/rerank_xgb.json")
     parser.add_argument("--n_neg_per_user", type=int, default=50)
     args = parser.parse_args()

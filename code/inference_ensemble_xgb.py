@@ -12,7 +12,7 @@ def log(msg, t0=None):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--candidates", type=str, default="../output/candidates.parquet")
+    parser.add_argument("--candidates", type=str, default="../output/candidates_xgb.parquet")
     parser.add_argument("--xgb_model", type=str, default="../output/rerank_xgb.json")
     parser.add_argument("--data_dir", type=str, default="../data")
     parser.add_argument("--train_dataset", type=str, default="train.parquet")

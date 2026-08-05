@@ -127,7 +127,7 @@ def main():
     parser.add_argument("--k_sasrec", type=int, default=200)
     parser.add_argument("--k_popular", type=int, default=200)
     parser.add_argument("--recent_hours", type=float, default=40.0, help="recent view 윈도우 (시간 단위, 기본 40h)")
-    parser.add_argument("--out", type=str, default="../output/candidates.parquet")
+    parser.add_argument("--out", type=str, default="../output/candidates_xgb.parquet")
     args = parser.parse_args()
 
     original_cwd = Path.cwd()
