@@ -201,6 +201,26 @@ python inference_ensemble.py \
   --w_xgb 0.X --w_lgbm 0.X --w_catboost 0.X
 ```
 
+#### 4. 앙상블 전략
+- SASRec 단독(0.1168) → LightGBM 단독: 순차 패턴 모델이 의외로 강력
+- 각 모델 점수를 min-max 정규화 후 가중합: 스케일 불일치 해소
+- negative sampling(유저당 50개)으로 학습 속도 대폭 개선 + 과적합 완화
+
+---
+
+## **🕵️‍♀️ Hypothesis Notes**
+
+---
+
+## **💡 Insights from Trial and Error**
+- Colab 파일로 제공된 baseline code가 과거 대회 건수 기준이었던 관계로 제출 실패. Outer Join하여 강제 제출했더니 기본 점수에도 미달 (0.0440)
+
+- ALS 보다 고스펙인 SASRec부터는 Colab으로 대회 진행이 힘들다고 판단, OCR 대회 환경에 uv 설치하니 Conda랑 충돌해 애를 먹다가, OCR 대회보다 상대적으로 가벼운 환경인 RecSys 대회가 OCR 환경에서 안 돌아갈 리 없지 않을까 생각되어 따로 가상환경을 나누지 않고 진행해보니 잘 되더라.😑
+
+- ALS와 SASRec 점수가 같음: 42%의 유저가 동일한 인기 아이템 top 10을 받고 두 모델 모두 같은 fallback 전략 사용
+
+- W&B 등 실험 추적 도구 미구축으로 세밀한 하이퍼파라미터 비교 어려움. 차후 Optuna 활용 앙상블 가중치 자동 탐색으로 수동 튜닝 한계 극복 예정
+
 ---
 
 ## **📊 Experiment Logger**
@@ -309,6 +329,7 @@ python inference_ensemble.py \
 ---
 
 ## **📜 Version Log**
+[[Releases] Download Source Code for Each Version](https://github.com/karmakaryx/cv-document-type-classification/releases)
 
 ---
 
@@ -423,3 +444,15 @@ flowchart TD
 - [[Wikipedia] Discounted Cumulative Gain](https://en.wikipedia.org/wiki/Discounted_cumulative_gain)
 - [[PDF] LightGBM: A Highly Efficient Gradient Boosting Decision Tree](https://proceedings.neurips.cc/paper_files/paper/2017/file/6449f44a102fde848669bdd9eb6b76fa-Paper.pdf)
 - [[Docs] XGBoost Documentation](https://xgboost.readthedocs.io/en/release_3.2.0/)
+
+### Role & Project Management
+- **역할:** ✨TEAM SOLO✨ 1인분 됩니다 (팀장, 팀원, 개발 & 실험, 산출물, 발표)
+- **협업방식:** 자작 실험관리툴 KattPaw 활용, 코드 카오스 최소화
+- **기여도 (100%):** 독고다이 일당백
+- **전략 및 성과:** 마지막 대회이므로 조금 욕심내서 2개 대회 동시 참여 신청. 난이도가 높은 OCR 대회에 비중을 더 두고, 본 RecSys 대회는 초기 EDA에서 유의미한 데이터의 비율이 매우 낮은 것을 확인한 뒤 Local CV 전략 등은 포기하고 실험 횟수를 줄이기로. 대신 ML대회에서 결과가 좋았던 SOTA 모델들을 조기 투입하여 성능을 높임. 최종적으로, 두 대회 모두 1위로 미션 클리어, 유종의 미를 거두다.✌️
+
+### Project Retrospective
+개인 출전으로 동시에 2개 대회를 참여했기 대문에 1대의 GPU 스케줄링을 위해 24시간 대기하는게 힘들었습니다. OCR은 computer vision 특성상 학습시간이 길고, RecSys는 CPU를 주로 사용한다고 해도 대용량 데이터다 보니 메모리 점유율이 높아 동시 진행은 힘들거라 예상됐지만 그래도 혹시나 2개 모델을 동시에 돌릴 수 있는지 시도해봤는데, 되겠냨ㅋㅋㅋㅋ 그래서 열흘 동안 잠은 학습이 끝날 시간에 알람 맞춰놓고 중간중간 잤는데, 자고 일어나보면 loss가 터져있어서 몇 시간씩 날린 적도 있고..🥲<br>
+RecSys쪽이 2지망이어서 W&B 등의 CV 환경을 제대로 구축하지 못한 점이 아쉽습니다. 좀 더 다양한 실험에 대한 계획은 있었으나 대부분 실행에 옮길 물리적인 시간이 부족했네요. 팀으로 참여했다면 팀원 분의 GPU를 동원하는 방법도 있었을텐데, 혼자서 2개 대회 하는 것은 비추합니다. 2개 대회 모두 단독 1등하긴 했지만 몸 생각해서 이런 무모한 시도는 하지 마세요. (AI가 인간을 완전히 대체하는 아포칼립스까지) 오래 살면서 개발해야죠ㅎㅎ🥹
+
+<br>
