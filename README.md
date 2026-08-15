@@ -217,6 +217,10 @@ python inference_ensemble.py \
 ---
 
 ## **💡 Insights from Trial and Error**
+- Colab 파일로 제공된 baseline code가 과거 대회 건수 기준이었던 관계로 제출 실패. Outer Join하여 강제 제출했더니 기본 점수에도 미달 (0.0440)
+
+- ALS 보다 고스펙인 SASRec부터는 Colab으로 대회 진행이 힘들다고 판단, OCR 대회 환경에 uv 설치하니 Conda랑 충돌해 애를 먹다가, OCR 대회보다 상대적으로 가벼운 환경인 RecSys 대회가 OCR 환경에서 안 돌아갈 리 없지 않을까 생각되어 따로 가상환경을 나누지 않고 진행해보니 잘 되더라.😑
+
 
 ---
 
