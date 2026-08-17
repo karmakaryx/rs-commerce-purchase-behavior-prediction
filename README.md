@@ -64,10 +64,10 @@ numpy==1.26.2                                     xgboost==3.2.0
 - category_code: Product's category taxonomy (code name) if it was possible to make it. Usually present for meaningful categories and skipped for different kinds of accessories.
 - brand: Down-cased string of brand name. Can be missed.
 - price: Float price of a product. Present.
-- event_type: Only one kind of event - purchase
+- event_type: view, cart, purchase
 
 #### 2. 사용자 행동 기록
-- 사용자는(user_id)는 홈페이지에 들어가 세션(user_session)을 할당받고 특정 아이템(item_id)을 특정 시간(event_time)에 상품(product_id) 장바구니에 추가(event_type='cart')하거나 조회(event_type='view')하거나 구매(event_type='purchase')할 수 있음
+- 사용자(user_id)는 홈페이지에 들어가 세션(user_session)을 할당받고 특정 아이템(item_id)을 특정 시간(event_time)에 상품(product_id) 장바구니에 추가(event_type='cart')하거나 조회(event_type='view')하거나 구매(event_type='purchase')할 수 있음
 - 각 상품별로 (해당 시점에 따른) 카테고리 코드(category_code)와 브랜드(brand), 가격(price)이 주어짐
 
 #### 3. submission.csv: 다음 일주일 동안 사용자가 구매한 상품 예측
@@ -97,43 +97,42 @@ numpy==1.26.2                                     xgboost==3.2.0
 
 #### 7. 유저별 상호작용 분포
 > 평균: 13.08회 / 중앙값: 6회 / 최대: 37,207회<br>
-> 5회 미만 상호작용 유저: 268,279명 (42.03%)<br>
-> cold start 문제: 42%의 유저가 필터링됨 (SASRec 학습시 이 유저들이 제외됨)
+> 5회 미만 상호작용 유저: 268,279명 (42.03%)
 ![eda_user](./assets/eda_user.png)
 
-#### 6. 시간에 따른 이벤트
+#### 8. 시간에 따른 이벤트
 > 주말(토, 일) 상호작용이 가장 많지만 목요일에 구매 전환율이 특이하게 높음 (0.072%)
 ![eda_time](./assets/eda_time.png)
 
-#### 7. 카테고리와 브랜드
+#### 9. 카테고리와 브랜드
 - 모든 데이터가 의류(apparel) 카테고리이므로 카테고리 정보는 차별화에 도움 안됨
 > 메인 카테고리: 1개 (apparel만 존재)<br>
 > 서브 카테고리: 24개
 
-#### 8. 조회 인기 브랜드 vs 구매 인기 브랜드
+#### 10. 조회 인기 브랜드 vs 구매 인기 브랜드
 - 구매 수가 너무 적어 브랜드가 큰 의미는 없어 보임 (최대 224개)
 > `respect`는 조회 1위지만 구매는 5위: 구경만 많이 함<br>
 > `xiaomi`, `sony`, `samsung`이 실제 구매로 이어지는 브랜드<br>
 > `iqos`, `glo` 같은 전자담배가 구매 상위에 있음
 ![eda_brand](./assets/eda_brand.png)
 
-#### 9. 아이템별 상호작용 통계
+#### 11. 아이템별 상호작용 통계
 > long-tail 분포: 상위 10% 아이템이 전체 상호작용의 63.4%를 차지
 ![eda_item](./assets/eda_item.png)
 > 전체 아이템: 29,502개<br>
 > 구매된 아이템: 996개 (3.38%)<br>
 > 구매안된 아이템: 28,506개 (96.62%)
 
-#### 10. 가격 통계
+#### 12. 가격 통계
 > 대부분 가격은 500이하로 책정되어 있으며, 구매된 상품의 가격이 더 낮음<br>
 > $0-50 가격대가 구매 전환율 가장 높음
 ![eda_price](./assets/eda_price.png)
 
-#### 11. 문제점 요약
+#### 13. 문제점 요약
 | 문제 | 심각도 | 영향 | 개선 방향 |
 | :--- | :--- | :--- | :--- |
 | 구매 데이터 부족 (0.02%) | 🔴 심각 | 학습 신호 부족 | 이벤트 가중치 |
-| cold start (42%) | 🔴 심각 | 점수 동일 원인 | 필터링 완화 |
+| low interaction (42%) | 🔴 심각 | 점수 동일 원인 | 필터링 완화 |
 | long-tail (63%) | 🟡 중간 | 다양성 부족 | 인기도 조절 |
 | 희소성 (99.96%) | 🟡 중간 | 협업필터링 한계 | 하이브리드 모델 |
 | 카테고리 무의미 | 🟢 낮음 | 특징 손실 | 무시 가능 |
@@ -152,16 +151,23 @@ numpy==1.26.2                                     xgboost==3.2.0
 > SASRec Sequence: sequential model 상위 top-200 아이템 (장기 시퀀스 소비 패턴)<br>
 > Popular Fallback: 전체 구매 인기도 기준 상위 아이템 (cold-user 커버리지 유지용)
 
-#### 3. Feature Engineering (30 Features Extraction)
-- 추출된 후보군에 대해 tabular/boosting 모델 학습을 위한 30개의 정량적 feature 생성
-- User-Item Interaction: ui_view_cnt, ui_view_cnt_40h, repeat2/3/5 (재조회 패턴), ui_cart_flag, ui_last_hours_ago
-- Temporal Features: ui_last_dow, ui_last_hour, is_peak (14~17시), is_active (10~18시), 요일별 플래그 (is_thu/fri/sat)
-- Item Profiling: item_view_pop, item_purchase_pop, item_purchase_rate (구매 전환율), item_price, price_bucket, price_bonus (EDA 기반)
-- Source & Heuristic Indicators: 후보군 생성 출처 (src_cart, src_repeat, src_recent, src_popular), src_priority, 휴리스틱 점수 (v5_score)
-- Item Clustering (K-Means, k=50): item_cluster_id, cluster_match_score, fine_category_match_score
+#### 3. Feature Engineering
+- XGBoost reranker (train_rerank_xgb.py)
+> SASRec 연계: sasrec_score, sasrec_rank<br>
+> 후보 소스 지표: src_cart, src_repeat, src_recent, src_sasrec, src_popular, src_priority(가중합)<br>
+> User-Item Interaction: ui_view_cnt, ui_view_cnt_40h(최근 40시간), ui_cart_flag, repeat2/repeat3/repeat5(재조회 횟수 플래그)<br>
+> 시간 관련: ui_last_hours_ago, ui_last_dow, ui_last_hour<br>
+> 아이템 인기도: item_view_pop
+
+- LightGBM / CatBoost reranker
+> SASRec 연계: sasrec_score, sasrec_rank<br>
+> 아이템 인기도: item_cnt, item_cart_cnt<br>
+> User-Item Interaction: ui_cnt, ui_cart_cnt, ui_view_cnt<br>
+> 가격 기반: item_price, user_avg_price, price_ratio<br>
+> 시간 gap: gap_hours(유저 마지막 활동 vs 아이템 마지막 등장 시간차)
 
 #### 4. Negative Sampling & Scaling
-- 학습 속도 개선 및 과적합 방지를 위해 유저당 50개의 음성 샘플(negative sample)을 추출하여 reranking 모델 학습 데이터 구축
+- XGBoost reranker 학습 시 학습 속도 개선 및 과적합 방지를 위해 유저당 최대 50개의 음성 샘플(negative sample)을 추출하여 학습 데이터 구축
 - 서로 다른 스케일을 가진 리랭킹 모델(XGBoost, LightGBM, CatBoost)의 예측 점수를 min-max scaling으로 정규화하여 앙상블 전처리 완료
 
 ---
@@ -183,14 +189,14 @@ numpy==1.26.2                                     xgboost==3.2.0
 #### 3. LightGBM
 - Leaf-wise 트리 분할: 트리의 균형을 맞추기보다 손실(loss)을 최대화하는 잎 노드를 우선적으로 분할하여, 더 깊은 트리를 형성하고 정확도를 높이는 구조
 - GOSS & EFB 알고리즘: 데이터 샘플 수를 줄이고 변수를 묶는 기법을 통해, 메모리 사용량을 획기적으로 줄이면서도 대규모 정형 데이터(tabular data)를 매우 빠르게 학습
-- 범주형 변수 최적화: 별도의 one-hot encoding 없이도 범주형 feature를 직접 처리할 수 있어, 추천 시스템의 메타 데이터(성별, 지역, 카테고리 등) 활용 시 성능이 뛰어남
+- 범주형 변수 최적화: 별도의 one-hot encoding 없이도 범주형 피처를 직접 처리할 수 있어, 추천 시스템의 메타 데이터(성별, 지역, 카테고리 등) 활용 시 성능이 뛰어남
 - 속도와 성능의 균형: XGBoost 대비 학습 속도가 압도적으로 빠르며, 하이퍼파라미터 튜닝에 따라 매우 정교한 순위 예측 가능
 
 #### 4. XGBoost
 - Level-wise 트리 분할: 트리의 층을 유지하며 균형 있게 성장시켜 과적합에 강하며, 안정적인 성능을 보장하는 전통적인 gradient boosting 프레임워크
 - 정교한 규제(regularization): L1, L2 규제를 내장하고 있어 복잡한 데이터에서도 모델의 일반화 성능이 뛰어나며, 시스템 자원을 효율적으로 사용하여 결측치를 스스로 처리함
 - 신뢰도 높은 앙상블: 여러 개의 약한 의사결정 트리를 결합하여 잔차를 줄여나가는 방식으로, 정형 데이터 예측 대회나 실무 지표 최적화에서 검증된 성능을 보유
-- 병렬 및 분산 학습 지원: 가중치 분위수 스케치(weighted quantile sketch) 등을 통해 대량의 수치형 feature를 효율적으로 계산하며 정확한 결과 도출에 유리
+- 병렬 및 분산 학습 지원: 가중치 분위수 스케치(weighted quantile sketch) 등을 통해 대량의 수치형 피처를 효율적으로 계산하며 정확한 결과 도출에 유리
 
 #### 5. CatBoost (Categorical Boosting)
 - 독자적인 범주형 변수 처리: Ordered TS(Target Statistics) 방식을 사용하여 범주형 피처를 수치화할 때 발생할 수 있는 데이터 누수를 방지하고, 전처리 과정을 대폭 단순화
@@ -208,10 +214,11 @@ python train_als.py  # train & inference
 ```
 python recbole_dataset.py  # prepare datset for using Recbole library
 python train_sasrec.py  # SASRec train
-python inference_sasrec.py --model_file ./checkpoints/SASRec-####.pth  # SASRec infrence
+python inference_sasrec.py --model_file ./checkpoints/SASRec-####.pth  # SASRec inference
 ```
 
 #### 3. LightGBM / XGBoost / CatBoost & ensemble (파일명 모델에 맞게 변경)
+candidate 생성 스크립트는 리랭커 종류에 따라 다름 (XGB: 5-source, LGBM/CatBoost: SASRec-only)
 ```
 python make_candidates.py --model_file checkpoints/SASRec-####.pth --k 200 --out output/candidates.parquet
 python train_rerank.py --candidates output/candidates.parquet --model_out output/rerank.txt
@@ -233,10 +240,37 @@ python inference_ensemble.py \
 ---
 
 ## **🕵️‍♀️ Hypothesis Notes**
+#### 1. 시간 및 이벤트 패턴
+- 특정 시간대(피크 타임) 및 주말 여부, 요일의 종류에 따라 사용자의 구매 패턴이 달라질까?
+- 장바구니 추가 이벤트는 가장 명확한 구매 의도를 나타내므로, 단순히 담았는지 여부 외에도 유저가 어떤 특성(가격대, 카테고리 등)을 지닌 상품을 장바구니에 담았는지 세부 분석 필요
+- 최근 행동 시퀀스 패턴: 유저의 최근 7일간 클릭/조회 패턴 변화로 단기 구매 의도를 예측해 보면?
+
+#### 2. 아이템 속성 및 인기도
+- 가격 및 가격 민감도: 상품의 가격 자체가 구매에 미치는 영향을 확인하고, 유저별 평균 구매 가격 대비 해당 상품의 가격 비율 등 확인
+- 인기도 지표의 다변화: 단순 조회/구매 건수 기반의 인기도와 전환율 기반의 인기도는 차이가 존재하며, 실제 구매 예측 및 cold-start 유저 대응에 더 유의미한 영향력을 갖는 인기도 지표 확인
+- 구매율이 높은 카테고리/브랜드 기반의 교차 피처 및 다른 메타 정보와의 2차 상호작용을 통해 예측 성능 개선
+
+#### 3. 모델링 및 검증 전략 (물리적 시간 부족으로 미실행)
+- 대용량 및 시계열 특성을 가지는 상호작용 데이터셋에서 K-Fold Cross Validation 도입이 검증 안정성에 도움이 될지 검토 필요
+- GBDT 기반 모델 외에 NCF, DeepFM 등 GPU 자원을 활용하는 딥러닝 기반 추천 모델 투입 고려
+- Two-Tower, GRU4Rec, BERT4Rec 등 고도화된 sequential/representation 모델을 후보군 생성 단계에 추가로 활용
 
 ---
 
 ## **💡 Insights from Trial and Error**
+- Colab 파일로 제공된 baseline code가 과거 대회 건수 기준이었던 관계로 제출 실패. Outer Join하여 강제 제출했더니 기본 점수에도 미달 (0.0440)
+
+- ALS보다 고스펙인 SASRec부터는 Colab으로 대회 진행이 힘들다고 판단, OCR 대회 환경에 uv 설치하니 Conda랑 충돌해 애를 먹다가, OCR 대회보다 상대적으로 가벼운 환경인 RecSys 대회가 OCR 환경에서 안 돌아갈 리 없지 않을까 생각되어 따로 가상환경을 나누지 않고 진행해보니 문제없이 되더라.😑
+
+- ALS와 SASRec 점수가 같음: 42%의 유저가 동일한 인기 아이템 top 10을 받고 두 모델 모두 같은 fallback 전략 사용
+
+- W&B 등 실험 추적 도구 미구축으로 세밀한 하이퍼파라미터 비교 어려움. 차후 Optuna 활용 앙상블 가중치 자동 탐색으로 수동 튜닝 한계 극복 예정
+
+- LightGBM과 SASRec 앙상블시엔 SASRec 비중이 더 중요함. SASRec 단독보다 앙상블이 더 낮은 이유를 분석해 보고 싶었으나 시간 부족
+
+- XGB만 유저당 negative를 최대 50개로 강제 제한하고 학습. 후보군이 5-source라 유저당 후보 수가 훨씬 많아서(negative 폭증) 메모리, 속도 문제로 샘플링
+
+- ML 개발시 LightGBM, XGBoost, CatBoost GBDT 3대장을 모두 사용해서 앙상블 해보고 싶었는데 이번엔 성공. CatBoost까지 학습시키기엔 시간이 충분치 않았는데 끝까지 매달려서 아슬아슬하게 완료
 
 ---
 
@@ -292,7 +326,7 @@ python inference_ensemble.py \
       <td>SASRec</td>
       <td>full eval, 19 epoch</td>
       <td align="center"><b>0.1168</b></td>
-      <td><b></b>0.1172</td>
+      <td><b>0.1172</b></td>
     </tr>
     <tr>
       <td align="center">06</td>
@@ -322,12 +356,15 @@ python inference_ensemble.py \
       <td align="center">02</td>
       <td align="center">20260507</td>
       <td>ALS</td>
-      <td>bseline code</td>
+      <td>baseline code</td>
       <td align="center"><b>0.0843</b></td>
       <td><b>0.0849</b></td>
     </tr>
   </tbody>
 </table>
+
+![tensorboard](./assets/tensorboard.png)
+![ndcg](./assets/ndcg.png)
 
 ---
 
@@ -346,7 +383,39 @@ python inference_ensemble.py \
 ---
 
 ## **📜 Version Log**
-[[Releases] Download Source Code for Each Version](https://github.com/karmakaryx/cv-document-type-classification/releases)
+[[Releases] Download Source Code for Each Version](https://github.com/karmakaryx/rs-commerce-purchase-behavior-prediction/releases)
+
+#### V02 ~ V06: Baseline & Matrix Factorization / Sequence Baseline
+- V02 (ALS Baseline): 기본 모델 구축
+- V03 (SASRec Baseline): RecBole 기반 SASRec 1 epoch baseline 실행
+- V04 (SASRec Tuned): SASRec 하이퍼파라미터 튜닝
+- V06 (ALS Advanced): 데이터 전처리 및 로직 개선 버전
+
+#### V07: SASRec Optimization & Sequence Inference
+- SASRec Inference 개선: epochs=50, stopping_step=5 (소요시간: ~44m 17s)
+- 정렬 기준 user_session → user_id 로 변경: SASRec TO(Time-Ordered) split 특성상 유저별 시간순 시퀀스가 보장되어야 하므로 세션 단위 뒤섞임 방지
+
+#### V08: 2-Stage Pipeline
+- Candidate Generation (make_candidates.py): 유저당 상위 후보 추출 (~50m 소요)
+- LightGBM & SASRec Blend 실험
+
+#### V09: Feature Engineering & Reranking Optimization (LGBM / XGB)
+- 유저-아이템 장바구니 수량 반영
+- SASRec Leave-One-Out과 통일 (LightGBM만 해당): train을 hist(과거) / last(마지막 1개)로 분리하여 라벨 생성
+- XGBoost/CatBoost는 train 전체의 purchase 기록을 그대로 positive label로 사용
+- validation label 유입 방지를 위해 item_last 및 피처들을 train_hist 기준으로 계산
+- 추론 시에는 전체 train을 hist로 활용
+- LightGBM early stopping 도입으로 오버피팅 방지 및 학습 시간 단축
+- user_id, label, pred 기반 NDCG@10 검증 모듈 적용
+
+#### V10: Multi-Source Candidates & XGBoost / CatBoost Extension
+- multi-source 후보 생성
+- XGBoost reranker 도입: XGBoost 리랭킹 모델 학습 및 SASRec rank score 앙상블 적용
+- CatBoost reranker 도입: YetiRank 기반 CatBoost Learning-to-Rank 모델 구축 (.cbm 모델 저장)
+
+#### V21 ~ V22: GBDT 3종 Ensemble
+- V21: LightGBM, XGBoost, CatBoost 3대 부스팅 모델 점수를 min-max scaling 후 결합
+- V22 (final champion nodel): GBDT 3종 모델의 가중치 최적화 튜닝 (총 학습/추론 시간: 9h 4m)
 
 ---
 
