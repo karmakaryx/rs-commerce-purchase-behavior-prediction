@@ -139,6 +139,30 @@ numpy==1.26.2                                     xgboost==3.2.0
 | 카테고리 무의미 | 🟢 낮음 | 특징 손실 | 무시 가능 |
 
 ### Data Preprocessing
+#### 1. Data Cleaning & Filtering
+- 카테고리 정보가 단일 메인 카테고리(apparel)로만 구성되어 있어 변별력이 없다고 판단, 모델 입력 피처에서 전처리시 제외
+- 전체 데이터 중 구매(purchase) 데이터가 0.02%로 매우 희소하여, 단순 조회(view) 외에 구매 가능성이 높은 시그널을 포착하기 위한 이벤트 기반 가중치 처리 및 서브샘플링 적용
+- 학습 데이터셋에 존재하는 user_id, item_id 기반으로 세팅하여 평가 단계의 cold-start 데이터 정리
+
+#### 2. 후보군 생성
+- 2-stage 추천 시스템 구축을 위해 유저당 최대 ~600개(통합시 약 200~850개)의 후보를 추출하여 candidates.parquet 형태로 전처리 진행 (make_candidates.py)
+> Cart: 장바구니에 담은 아이템 (cart → purchase 전환율 12.68%의 강력한 구매 신호 반영)<br>
+> Repeat View: 2회 이상 조회된 아이템 (유저의 반복된 중기 관심 포착)<br>
+> Recent View: 최근 40시간 이내 조회 아이템 (시간 기반 즉각적 구매 의도 포착)<br>
+> SASRec Sequence: sequential model 상위 top-200 아이템 (장기 시퀀스 소비 패턴)<br>
+> Popular Fallback: 전체 구매 인기도 기준 상위 아이템 (cold-user 커버리지 유지용)
+
+#### 3. Feature Engineering (30 Features Extraction)
+- 추출된 후보군에 대해 tabular/boosting 모델 학습을 위한 30개의 정량적 feature 생성
+- User-Item Interaction: ui_view_cnt, ui_view_cnt_40h, repeat2/3/5 (재조회 패턴), ui_cart_flag, ui_last_hours_ago
+- Temporal Features: ui_last_dow, ui_last_hour, is_peak (14~17시), is_active (10~18시), 요일별 플래그 (is_thu/fri/sat)
+- Item Profiling: item_view_pop, item_purchase_pop, item_purchase_rate (구매 전환율), item_price, price_bucket, price_bonus (EDA 기반)
+- Source & Heuristic Indicators: 후보군 생성 출처 (src_cart, src_repeat, src_recent, src_popular), src_priority, 휴리스틱 점수 (v5_score)
+- Item Clustering (K-Means, k=50): item_cluster_id, cluster_match_score, fine_category_match_score
+
+#### 4. Negative Sampling & Scaling
+- 학습 속도 개선 및 과적합 방지를 위해 유저당 50개의 음성 샘플(negative sample)을 추출하여 reranking 모델 학습 데이터 구축
+- 서로 다른 스케일을 가진 리랭킹 모델(XGBoost, LightGBM, CatBoost)의 예측 점수를 min-max scaling으로 정규화하여 앙상블 전처리 완료
 
 ---
 
@@ -209,18 +233,10 @@ python inference_ensemble.py \
 ---
 
 ## **🕵️‍♀️ Hypothesis Notes**
-- 시간대 및 주말 여부, 요일의 종류에 따라서도 사용자의 구매 패턴이 영향을 받을 수 있지 않을까?
-- 카테고리 및 브랜드의 다른 정보와의 2차 상호작용 정보를 고려해 볼 수 있음
-- 상품의 가격은 구매에 얼마나 영향을 끼칠까? 또한 소비자의 가격민감도를 feature로 표현할 수 있을까?
-- 단순 개수 기반의 popularity와 rate 기반의 popularity는 실제로 차이가 있음. 실제 구매에 더 유의미한 영향을 미치는 쪽은?
 
 ---
 
 ## **💡 Insights from Trial and Error**
-- Colab 파일로 제공된 baseline code가 과거 대회 건수 기준이었던 관계로 제출 실패. Outer Join하여 강제 제출했더니 기본 점수에도 미달 (0.0440)
-
-- ALS 보다 고스펙인 SASRec부터는 Colab으로 대회 진행이 힘들다고 판단, OCR 대회 환경에 uv 설치하니 Conda랑 충돌해 애를 먹다가, OCR 대회보다 상대적으로 가벼운 환경인 RecSys 대회가 OCR 환경에서 안 돌아갈 리 없지 않을까 생각되어 따로 가상환경을 나누지 않고 진행해보니 잘 되더라.😑
-
 
 ---
 
