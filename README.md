@@ -392,7 +392,7 @@ python inference_ensemble.py \
 - V06 (ALS Advanced): 데이터 전처리 및 로직 개선 버전
 
 #### V07: SASRec Optimization & Sequence Inference
-- SASRec Inference 개선: epochs=50, stopping_step=5 (소요시간: ~44m 17s)
+- SASRec Inference 개선: epochs=50, stopping_step=5 (~44m 소요)
 - 정렬 기준 user_session → user_id 로 변경: SASRec TO(Time-Ordered) split 특성상 유저별 시간순 시퀀스가 보장되어야 하므로 세션 단위 뒤섞임 방지
 
 #### V08: 2-Stage Pipeline
